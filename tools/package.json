@@ -1,0 +1,7 @@
+{
+  "name": "osrs-loot-variance-tools",
+  "private": true,
+  "type": "module",
+  "scripts": { "build-data": "node build-data.mjs" },
+  "dependencies": { "linkedom": "^0.18.5" }
+}
