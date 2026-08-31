@@ -1,0 +1,54 @@
+name: Refresh data and deploy
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install tools
+        working-directory: tools
+        run: npm install
+
+      - name: Fetch drop tables and prices
+        working-directory: tools
+        env:
+          WIKI_UA: ${{ vars.WIKI_UA || format('osrs-loot-variance build - github.com/{0}', github.repository) }}
+        run: npm run build-data
+
+      - name: Show what was built
+        run: du -sh data
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
