@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSRS Boss Loot Variance</title>
+<meta name="description" content="Drop rates, expected value and variance for every boss in Old School RuneScape.">
+<style>
+  :root{
+    --bg:#141210; --panel:#1C1915; --panel2:#232019; --rule:#38322A;
+    --ink:#EFE7DA; --muted:#9A9086; --gold:#C9A45C; --rust:#B0563A; --sea:#6F9E92;
+    --serif:"Palatino Linotype","Book Antiqua",Palatino,Georgia,serif;
+    --sans:ui-sans-serif,system-ui,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
+  .wrap{max-width:1000px;margin:0 auto;padding:30px 20px 70px}
+  h1{font-family:var(--serif);font-weight:400;font-size:31px;margin:0 0 4px;letter-spacing:.2px}
+  h2{font-family:var(--serif);font-weight:400;font-size:20px;margin:34px 0 12px}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 26px}
+  a{color:var(--gold)}
+  .num{font-variant-numeric:tabular-nums}
+
+  /* controls */
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+  .field{background:var(--panel);padding:12px 14px}
+  .field label{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+  input,select,button{font-family:var(--sans);font-size:14px}
+  input[type=text],input[type=number],select{width:100%;background:var(--panel2);border:1px solid var(--rule);color:var(--ink);padding:7px 8px;border-radius:2px;font-variant-numeric:tabular-nums}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .btn{background:var(--panel2);border:1px solid var(--rule);color:var(--ink);padding:8px 14px;border-radius:2px;cursor:pointer}
+  .btn:hover{border-color:var(--gold)}
+  .btn.primary{background:var(--gold);color:#1a1510;border-color:var(--gold);font-weight:600}
+  .chk{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;cursor:pointer}
+  .chk input{accent-color:var(--gold);width:15px;height:15px}
+
+  /* combobox */
+  .combo{position:relative}
+  .menu{position:absolute;z-index:20;left:0;right:0;top:100%;max-height:300px;overflow:auto;background:var(--panel2);border:1px solid var(--rule);border-top:none}
+  .menu div{padding:7px 10px;cursor:pointer;font-size:14px}
+  .menu div:hover,.menu div.on{background:#2E2921;color:var(--gold)}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:1px}
+  .stat{background:var(--panel);padding:14px}
+  .stat .k{color:var(--muted);font-size:12px;margin-bottom:5px}
+  .stat .v{font-family:var(--serif);font-size:25px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat .n{color:var(--muted);font-size:12px;margin-top:5px}
+
+  canvas{display:block;width:100%;background:var(--panel);border:1px solid var(--rule)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:8px 0 0}
+  .legend i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:6px}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--rule);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-weight:400;position:sticky;top:0;background:var(--bg)}
+  tbody tr:hover{background:var(--panel)}
+  td input{padding:3px 5px;font-size:13px;text-align:right}
+  .tag{font-size:11px;color:var(--muted);border:1px solid var(--rule);padding:1px 5px;border-radius:2px;margin-left:6px}
+  .scroll{max-height:520px;overflow:auto;border:1px solid var(--rule)}
+
+  .note{color:var(--muted);font-size:13px;line-height:1.65}
+  .warn{background:#2A1E16;border:1px solid var(--rust);color:#E8CDBF;padding:12px 14px;font-size:13.5px;margin-top:14px}
+  .hidden{display:none}
+  .spin{color:var(--muted);font-size:13px}
+  @media(max-width:620px){ .stat .v{font-size:21px} h1{font-size:25px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Boss loot variance</h1>
+  <p class="sub">Pick a boss, set a kill count, and see what the drop table actually pays — expected value, the spread around it, and the odds on every line. Drop rates come from the OSRS Wiki, prices from the live Grand Exchange feed.</p>
+
+  <div class="controls">
+    <div class="field" style="grid-column:span 2">
+      <label for="bossInput">Boss</label>
+      <div class="combo">
+        <input type="text" id="bossInput" placeholder="Start typing — Vorkath, Zulrah, Cerberus…" autocomplete="off">
+        <div class="menu hidden" id="bossMenu"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="kc">Kills</label>
+      <input type="number" id="kc" value="80" min="1" max="100000">
+    </div>
+    <div class="field">
+      <label for="kph">Kills per hour</label>
+      <input type="number" id="kph" value="30" min="1" max="1000">
+    </div>
+    <div class="field">
+      <label for="cost">Supply cost per kill</label>
+      <input type="number" id="cost" value="0" min="0">
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:14px">
+    <label class="chk"><input type="checkbox" id="optTax"> Deduct 2% GE tax on sales</label>
+    <label class="chk"><input type="checkbox" id="optAlch" checked> Value untradeables at high alch</label>
+    <span class="spin" id="status"></span>
+  </div>
+
+  <div id="warnBox"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <h2>Where the trip lands</h2>
+  <canvas id="pathChart" height="360"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--gold)"></i>Expected</span>
+    <span><i style="background:var(--ink)"></i>Median</span>
+    <span><i style="background:#4A4034"></i>Middle 50%</span>
+    <span><i style="background:#332C24"></i>Middle 90%</span>
+    <span><i style="background:var(--sea)"></i>Sample trips</span>
+    <span id="breakevenKey" class="hidden"><i style="background:var(--rust)"></i>Break even</span>
+  </div>
+  <p class="note" id="pathNote"></p>
+
+  <h2>How often each result happens</h2>
+  <canvas id="histChart" height="280"></canvas>
+  <p class="note" id="histNote"></p>
+
+  <h2>Chance of a rare, by kill count</h2>
+  <canvas id="rareChart" height="280"></canvas>
+  <div class="legend" id="rareLegend"></div>
+
+  <h2>Drop table</h2>
+  <p class="note" style="margin-top:-4px">Every rate and price is editable — change one and the whole page recalculates. Untick a line to leave it out, or fill in a blank rate for a drop the wiki hasn't measured yet.</p>
+  <div class="scroll">
+    <table id="dropTable">
+      <thead><tr>
+        <th style="width:34px"></th><th>Item</th><th>Qty</th><th>1 in</th>
+        <th>Price</th><th>Expected</th><th>Chance in <span id="kcHead">80</span></th><th>Value</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <p class="note" style="margin-top:22px" id="footnote"></p>
+</div>
+
+<script>
+/* ============================================================
+   OSRS boss loot variance
+   Reads a pre-built snapshot of the wiki drop tables from ./data (same origin,
+   so no CORS and no scraping from the visitor's browser). Regenerate the
+   snapshot with tools/build-data.mjs — see README.
+   ============================================================ */
+
+const DATA = "./data";                   // built by tools/build-data.mjs, served same-origin
+
+const S = {
+  boss: null, bossName: "", generated: null,
+  index: [],           // [{name, slug, lines}]
+  drops: [],
+  kc: 80, kph: 30, cost: 0,
+  tax: false, alch: true,
+  sim: null,
+};
+
+/* ---------- tiny helpers ---------- */
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const fmt = n => Math.round(n).toLocaleString("en-US");
+function gp(n){
+  const s = n < 0 ? "-" : ""; n = Math.abs(n);
+  if (n >= 1e9) return s + (n/1e9).toFixed(2) + "b";
+  if (n >= 1e6) return s + (n/1e6).toFixed(n >= 1e8 ? 0 : 1) + "m";
+  if (n >= 1e4) return s + Math.round(n/1e3) + "k";
+  return s + fmt(n);
+}
+function pct(p){
+  if (p <= 0) return "0%";
+  if (p >= 0.9999) return ">99.99%";
+  if (p < 0.0001) return "<0.01%";
+  return (p*100).toFixed(p < 0.1 ? 2 : 1) + "%";
+}
+const atLeastOne = (p,n) => 1 - Math.pow(1-p, n);
+function ago(iso){
+  const mins = (Date.now() - new Date(iso)) / 60000;
+  if (!isFinite(mins)) return "";
+  if (mins < 90) return Math.round(mins) + " minutes ago";
+  if (mins < 60*36) return Math.round(mins/60) + " hours ago";
+  return Math.round(mins/1440) + " days ago";
+}
+
+/* ---------- local data ---------- */
+async function jget(url){
+  const r = await fetch(url, {headers:{"Accept":"application/json"}});
+  if (!r.ok) throw new Error(url.replace(DATA,"data") + " → HTTP " + r.status);
+  return r.json();
+}
+async function loadIndex(){
+  const j = await jget(`${DATA}/bosses.json`);
+  S.index = j.bosses || [];
+  S.generated = j.generated;
+  S.seedFlag = !!j.seed;
+  return S.index;
+}
+async function loadDrops(slug){
+  const j = await jget(`${DATA}/drops/${slug}.json`);
+  return (j.drops || []).map(d => ({...d, on: d.p != null, override: null, unknownRate: d.p == null}));
+}
+
+
+function unitValue(d){
+  let v = d.override != null ? d.override : (d.price || 0);
+  if (!v && S.alch) v = d.alch || 0;
+  if (S.tax && v >= 50) v -= Math.min(5_000_000, Math.floor(v * 0.02));
+  return Math.max(0, v);
+}
+function lineEV(d){ return usable(d) ? d.p * d.rolls * d.qty * unitValue(d) : 0; }
+function usable(d){ return d.on && d.p != null && isFinite(d.p) && d.p > 0; }
+
+/* ---------- simulation ---------- */
+function poisson(lam){
+  if (lam <= 0) return 0;
+  if (lam > 20){                                   // normal approximation
+    let u=0,v=0; while(!u) u=Math.random(); while(!v) v=Math.random();
+    const z = Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
+    return Math.max(0, Math.round(lam + z*Math.sqrt(lam)));
+  }
+  const L = Math.exp(-lam); let k=0, prod=Math.random();
+  while (prod > L){ k++; prod *= Math.random(); }
+  return k;
+}
+
+function gauss(){
+  let u=0,v=0; while(!u) u=Math.random(); while(!v) v=Math.random();
+  return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
+}
+// number of successes in `trials` Bernoulli(p) draws
+function sampleCount(p, trials){
+  if (trials <= 0) return 0;
+  if (p >= 0.999) return trials;                       // guaranteed drops (bones, ashes)
+  const lam = p * trials;
+  if (lam >= 12) return Math.max(0, Math.round(lam + gauss()*Math.sqrt(trials*p*(1-p))));
+  if (p > 0.05 && trials <= 16){                       // small-n, moderate-p: draw it out
+    let c = 0; for (let i = 0; i < trials; i++) if (Math.random() < p) c++; return c;
+  }
+  return poisson(lam);
+}
+
+function simulate(){
+  const n = S.kc;
+  const all = S.drops.filter(d => usable(d) && unitValue(d) > 0)
+                     .map(d => ({p: Math.min(1, d.p), rolls: d.rolls, val: d.qty * unitValue(d)}));
+  const segs = clamp(Math.min(n, 60), 1, 60);
+  const runs = n > 5000 ? 900 : 2000;
+
+  // integer kill counts per segment, summing exactly to n
+  const bound = [], segKills = [];
+  for (let s = 0; s <= segs; s++) bound.push(Math.round(s * n / segs));
+  for (let s = 0; s < segs; s++) segKills.push(bound[s+1] - bound[s]);
+
+  // Guaranteed drops are deterministic; high-frequency lines are pooled into one
+  // normal draw per segment; everything rarer is sampled line by line.
+  const fixed = [], bulk = [], rare = [];
+  const avgKills = n / segs;
+  all.forEach(l => {
+    if (l.p >= 0.999) fixed.push(l);
+    else if (l.p * l.rolls * avgKills >= 12) bulk.push(l);
+    else rare.push(l);
+  });
+  let fixedPerKill = 0, bulkMeanPerKill = 0, bulkVarPerKill = 0;
+  fixed.forEach(l => fixedPerKill += l.rolls * l.val);
+  bulk.forEach(l => {
+    bulkMeanPerKill += l.p * l.rolls * l.val;
+    bulkVarPerKill  += l.rolls * l.p * (1-l.p) * l.val * l.val;
+  });
+
+  const paths = [];
+  const at = Array.from({length: segs}, () => new Float64Array(runs));
+  const finals = new Float64Array(runs);
+  const costTotal = S.cost * n;
+
+  for (let r = 0; r < runs; r++) {
+    let acc = 0;
+    const keep = r < 14 ? new Float64Array(segs) : null;
+    for (let s = 0; s < segs; s++) {
+      const k = segKills[s];
+      acc += fixedPerKill * k;
+      if (bulk.length) acc += Math.max(0, bulkMeanPerKill*k + Math.sqrt(bulkVarPerKill*k)*gauss());
+      for (let i = 0; i < rare.length; i++) {
+        const c = sampleCount(rare[i].p, rare[i].rolls * k);
+        if (c) acc += c * rare[i].val;
+      }
+      const net = acc - S.cost * bound[s+1];
+      at[s][r] = net;
+      if (keep) keep[s] = net;
+    }
+    finals[r] = acc - costTotal;
+    if (keep) paths.push(keep);
+  }
+
+  const q = (arr, f) => { const a = Array.from(arr).sort((x,y)=>x-y); return a[clamp(Math.floor(f*a.length),0,a.length-1)]; };
+  const bands = [];
+  for (let s = 0; s < segs; s++) {
+    const a = Array.from(at[s]).sort((x,y)=>x-y);
+    const pick = f => a[clamp(Math.floor(f*a.length),0,a.length-1)];
+    bands.push({p5:pick(.05), p25:pick(.25), p50:pick(.5), p75:pick(.75), p95:pick(.95)});
+  }
+
+  const evPerKill = S.drops.reduce((t,d) => t + lineEV(d), 0);
+  const ev = evPerKill * n - costTotal;
+  const sorted = Array.from(finals).sort((a,b)=>a-b);
+  let above = 0, loss = 0;
+  for (const f of sorted){ if (f >= ev) above++; if (f < 0) loss++; }
+  const mean = sorted.reduce((a,b)=>a+b,0)/sorted.length;
+  const sd = Math.sqrt(sorted.reduce((a,b)=>a+(b-mean)**2,0)/sorted.length);
+
+  return {
+    n, segs, bound, bands, paths, finals: sorted, ev, evPerKill, sd,
+    aboveEv: above/sorted.length, lossRate: loss/sorted.length,
+    p5:q(sorted,.05), p25:q(sorted,.25), p50:q(sorted,.5), p75:q(sorted,.75), p95:q(sorted,.95),
+    runs,
+  };
+}
+
+/* ---------- charts ---------- */
+function setup(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.height;
+  cv.width = w*dpr; cv.style.height = h + "px";
+  cv.height = h*dpr;
+  const g = cv.getContext("2d"); g.scale(dpr,dpr);
+  g.clearRect(0,0,w,h);
+  return {g,w,h};
+}
+const CSSV = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+
+function axes(g, w, h, pad, xTicks, yTicks, xFmt, yFmt){
+  g.strokeStyle = CSSV("--rule"); g.fillStyle = CSSV("--muted");
+  g.font = '11px ' + CSSV("--sans").split(",")[0];
+  g.lineWidth = 1;
+  yTicks.forEach(t => {
+    g.beginPath(); g.moveTo(pad.l, t.y); g.lineTo(w-pad.r, t.y); g.stroke();
+    g.textAlign = "right"; g.textBaseline = "middle";
+    g.fillText(yFmt(t.v), pad.l-8, t.y);
+  });
+  xTicks.forEach(t => {
+    g.textAlign = "center"; g.textBaseline = "top";
+    g.fillText(xFmt(t.v), t.x, h-pad.b+8);
+  });
+}
+
+function drawPaths(sim){
+  const cv = $("#pathChart"); const {g,w,h} = setup(cv);
+  const pad = {l:64,r:14,t:14,b:30};
+  const lo = Math.min(0, sim.bands[sim.segs-1].p5, ...sim.paths.map(p=>Math.min(...p)));
+  const hi = Math.max(sim.bands[sim.segs-1].p95, sim.ev, 1);
+  const span = (hi-lo) || 1;
+  const X = i => pad.l + (i+1)/sim.segs * (w-pad.l-pad.r);
+  const Y = v => h-pad.b - (v-lo)/span * (h-pad.t-pad.b);
+
+  const yT = []; for (let i=0;i<=4;i++){ const v = lo + span*i/4; yT.push({v, y:Y(v)}); }
+  const xT = []; for (let i=0;i<=4;i++){ const k = sim.n*i/4; xT.push({v:k, x: pad.l + i/4*(w-pad.l-pad.r)}); }
+  axes(g,w,h,pad,xT,yT,v=>fmt(v),v=>gp(v));
+
+  const band = (key1,key2,color) => {
+    g.beginPath();
+    sim.bands.forEach((b,i)=> i? g.lineTo(X(i),Y(b[key1])) : g.moveTo(X(i),Y(b[key1])));
+    for (let i=sim.segs-1;i>=0;i--) g.lineTo(X(i),Y(sim.bands[i][key2]));
+    g.closePath(); g.fillStyle = color; g.fill();
+  };
+  band("p5","p95","#2A251E");
+  band("p25","p75","#413931");
+
+  g.lineWidth = 1; g.strokeStyle = "rgba(111,158,146,.55)";
+  sim.paths.forEach(p => { g.beginPath(); p.forEach((v,i)=> i? g.lineTo(X(i),Y(v)) : g.moveTo(X(i),Y(v))); g.stroke(); });
+
+  if (S.cost > 0){
+    g.strokeStyle = CSSV("--rust"); g.setLineDash([4,4]); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(pad.l, Y(0)); g.lineTo(w-pad.r, Y(0)); g.stroke(); g.setLineDash([]);
+  }
+  g.lineWidth = 2; g.strokeStyle = CSSV("--ink");
+  g.beginPath(); sim.bands.forEach((b,i)=> i? g.lineTo(X(i),Y(b.p50)) : g.moveTo(X(i),Y(b.p50))); g.stroke();
+
+  g.strokeStyle = CSSV("--gold"); g.setLineDash([6,4]);
+  g.beginPath(); g.moveTo(X(-1), Y(0)); g.lineTo(X(sim.segs-1), Y(sim.ev)); g.stroke(); g.setLineDash([]);
+}
+
+function drawHist(sim){
+  const cv = $("#histChart"); const {g,w,h} = setup(cv);
+  const pad = {l:64,r:14,t:14,b:30};
+  const a = sim.finals;
+  const lo = a[0], hi = a[Math.floor(a.length*0.995)] || a[a.length-1];
+  const bins = 48, span = (hi-lo)||1, counts = new Array(bins).fill(0);
+  for (const v of a) counts[clamp(Math.floor((v-lo)/span*bins),0,bins-1)]++;
+  const peak = Math.max(...counts);
+  const X = v => pad.l + (v-lo)/span * (w-pad.l-pad.r);
+  const Y = c => h-pad.b - c/peak * (h-pad.t-pad.b);
+
+  const xT=[]; for(let i=0;i<=4;i++){const v=lo+span*i/4; xT.push({v,x:X(v)});}
+  axes(g,w,h,pad,xT,[{v:0,y:h-pad.b}],v=>gp(v),()=>"" );
+
+  const bw = (w-pad.l-pad.r)/bins;
+  counts.forEach((c,i)=>{
+    const x = pad.l + i*bw, y = Y(c);
+    g.fillStyle = (lo + (i+.5)/bins*span) < 0 ? "#4A2E24" : "#3B342B";
+    g.fillRect(x, y, Math.max(1,bw-1), h-pad.b-y);
+  });
+  const mark = (v,color,label) => {
+    if (v < lo || v > hi) return;
+    g.strokeStyle = color; g.lineWidth = 2; g.beginPath();
+    g.moveTo(X(v), pad.t); g.lineTo(X(v), h-pad.b); g.stroke();
+    g.fillStyle = color; g.font='11px sans-serif'; g.textAlign="left";
+    g.fillText(label, X(v)+4, pad.t+10);
+  };
+  mark(sim.p50, CSSV("--ink"), "median");
+  mark(sim.ev, CSSV("--gold"), "average");
+  if (S.cost > 0) mark(0, CSSV("--rust"), "break even");
+}
+
+function drawRares(){
+  const cv = $("#rareChart"); const {g,w,h} = setup(cv);
+  const pad = {l:44,r:14,t:14,b:30};
+  const picks = S.drops.filter(d => usable(d) && d.p < 1/50 && unitValue(d) > 0)
+                       .sort((a,b) => (b.qty*unitValue(b)) - (a.qty*unitValue(a))).slice(0,4);
+  const maxKc = Math.max(S.kc*2, 100);
+  const X = k => pad.l + k/maxKc * (w-pad.l-pad.r);
+  const Y = p => h-pad.b - p * (h-pad.t-pad.b);
+  const yT = [0,.25,.5,.75,1].map(v=>({v,y:Y(v)}));
+  const xT = [0,.25,.5,.75,1].map(f=>({v:maxKc*f,x:X(maxKc*f)}));
+  axes(g,w,h,pad,xT,yT,v=>fmt(v),v=>Math.round(v*100)+"%");
+
+  const colors = [CSSV("--gold"), CSSV("--sea"), CSSV("--rust"), "#8C7FA8"];
+  const legend = [];
+  picks.forEach((d,i)=>{
+    g.strokeStyle = colors[i]; g.lineWidth = 2; g.beginPath();
+    for (let k=0;k<=maxKc;k+=Math.max(1,Math.round(maxKc/220))){
+      const p = atLeastOne(d.p*d.rolls, k);
+      k ? g.lineTo(X(k),Y(p)) : g.moveTo(X(k),Y(p));
+    }
+    g.stroke();
+    legend.push(`<span><i style="background:${colors[i]}"></i>${d.name} — ${pct(atLeastOne(d.p*d.rolls,S.kc))} at ${fmt(S.kc)}</span>`);
+  });
+  g.strokeStyle = CSSV("--muted"); g.setLineDash([3,3]); g.lineWidth=1;
+  g.beginPath(); g.moveTo(X(S.kc), pad.t); g.lineTo(X(S.kc), h-pad.b); g.stroke(); g.setLineDash([]);
+  $("#rareLegend").innerHTML = legend.join("") || '<span>No rare valuable drops on this table.</span>';
+}
+
+/* ---------- render ---------- */
+function renderStats(sim){
+  const hours = S.kc / Math.max(1,S.kph);
+  const cards = [
+    ["Expected loot", gp(sim.ev), fmt(Math.round(sim.evPerKill - S.cost)) + " gp per kill", "--gold"],
+    ["Typical (median)", gp(sim.p50), "half of trips do worse", "--ink"],
+    ["Middle 90%", gp(sim.p5) + " – " + gp(sim.p95), "1 in 20 falls outside", "--ink"],
+    ["Beat the average", pct(sim.aboveEv), "rares carry the mean", "--sea"],
+    ["Gp per hour", gp(sim.ev/Math.max(hours,1e-9)), hours.toFixed(1) + " hours at " + S.kph + "/hr", "--gold"],
+  ];
+  if (S.cost > 0) cards.push(["Chance of a loss", pct(sim.lossRate), "after " + gp(S.cost*S.kc) + " of supplies", "--rust"]);
+  $("#stats").innerHTML = cards.map(([k,v,n,c]) =>
+    `<div class="stat"><div class="k">${k}</div><div class="v num" style="color:var(${c})">${v}</div><div class="n">${n}</div></div>`).join("");
+
+  $("#pathNote").textContent =
+    `${fmt(sim.runs)} simulated runs of ${fmt(S.kc)} kills. The dashed line is the average; the pale band holds 90% of outcomes and the darker band the middle half. `
+    + `Standard deviation is ${gp(sim.sd)} — roughly ${(sim.sd/Math.max(1,Math.abs(sim.ev))).toFixed(1)}× the expected total, which is why short trips tell you almost nothing.`;
+  $("#histNote").textContent =
+    `Only ${pct(sim.aboveEv)} of runs reach the average, because the mean is dragged up by drops most players never see in ${fmt(S.kc)} kills.`;
+}
+
+function renderTable(){
+  const tb = $("#dropTable tbody");
+  const rows = S.drops.slice().sort((a,b) => {
+    const va = usable(a) ? lineEV(a) : -1, vb = usable(b) ? lineEV(b) : -1;
+    return vb - va;
+  });
+  tb.innerHTML = rows.map((d, i) => {
+    const idx = S.drops.indexOf(d);
+    const known = isFinite(d.p) && d.p > 0;
+    const v = unitValue(d);
+    const chance = known ? pct(atLeastOne(d.p*d.rolls, S.kc)) : "—";
+    return `<tr>
+      <td><input type="checkbox" data-i="${idx}" class="onbox" ${d.on?"checked":""}></td>
+      <td>${d.name}<span class="tag">${d.section}</span>${d.rolls>1?`<span class="tag">${d.rolls} rolls</span>`:""}${!known?`<span class="tag">${d.rarityText}</span>`:""}${v===0?`<span class="tag">no price</span>`:""}</td>
+      <td class="num">${d.qty % 1 ? d.qty.toFixed(1) : d.qty}</td>
+      <td><input type="number" class="ratebox" data-i="${idx}" value="${known ? Math.round(1/d.p) : ""}" placeholder="?" title="1 in how many kills"></td>
+      <td><input type="number" class="pricebox" data-i="${idx}" value="${v}"></td>
+      <td class="num">${known ? (d.p*d.rolls*S.kc).toFixed(3) : "—"}</td>
+      <td class="num">${chance}</td>
+      <td class="num" style="color:var(--gold)">${known ? gp(lineEV(d)*S.kc) : "—"}</td>
+    </tr>`;
+  }).join("");
+  tb.querySelectorAll(".onbox").forEach(el => el.onchange = e => {
+    S.drops[+e.target.dataset.i].on = e.target.checked; recompute();
+  });
+  tb.querySelectorAll(".ratebox").forEach(el => el.onchange = e => {
+    const d = S.drops[+e.target.dataset.i], v = +e.target.value;
+    d.p = v > 0 ? 1/v : null;
+    d.unknownRate = d.p == null;
+    if (d.p != null && !d.on) d.on = true;
+    recompute();
+  });
+  tb.querySelectorAll(".pricebox").forEach(el => el.onchange = e => {
+    S.drops[+e.target.dataset.i].override = Math.max(0, +e.target.value || 0); recompute();
+  });
+  $("#kcHead").textContent = fmt(S.kc);
+}
+
+function recompute(){
+  if (!S.drops.length) return;
+  const sim = simulate();
+  S.sim = sim;
+  renderStats(sim);
+  drawPaths(sim); drawHist(sim); drawRares();
+  renderTable();
+  writeHash();
+}
+
+/* ---------- boot / events ---------- */
+function readState(){
+  S.kc   = clamp(parseInt($("#kc").value) || 1, 1, 100000);
+  S.kph  = clamp(parseInt($("#kph").value) || 1, 1, 1000);
+  S.cost = Math.max(0, parseInt($("#cost").value) || 0);
+  S.tax  = $("#optTax").checked;
+  S.alch = $("#optAlch").checked;
+}
+function writeHash(){
+  location.replace("#boss=" + encodeURIComponent(S.boss||"") + "&kc=" + S.kc + "&kph=" + S.kph + "&cost=" + S.cost);
+}
+function readHash(){
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get("kc"))   $("#kc").value = h.get("kc");
+  if (h.get("kph"))  $("#kph").value = h.get("kph");
+  if (h.get("cost")) $("#cost").value = h.get("cost");
+  return h.get("boss");
+}
+
+function warn(msg){
+  $("#warnBox").innerHTML = msg ? `<div class="warn">${msg}</div>` : "";
+}
+
+async function selectBoss(entry){
+  S.boss = entry.slug; S.bossName = entry.name;
+  $("#bossInput").value = entry.name;
+  $("#status").textContent = "Loading " + entry.name + "…";
+  if (!S.seedFlag) warn("");
+  try {
+    S.drops = await loadDrops(entry.slug);
+    if (!S.drops.length) { warn(`No drop lines stored for ${entry.name}.`); $("#status").innerHTML=""; return; }
+    const unknown = S.drops.filter(d => d.unknownRate).length;
+    warn(unknown ? `${unknown} line${unknown>1?"s":""} on this table have no published rate — the wiki lists them as Common, Uncommon or Varies. They are left out of the maths; type a rate into the "1 in" column if you want one counted.` : "");
+    readState();
+    recompute();
+    $("#status").innerHTML = S.index.length + " bosses · drop data updated " + ago(S.generated);
+  } catch (e) {
+    console.error(e);
+    $("#status").textContent = "";
+    warn("Could not load " + entry.name + ": " + e.message + ". Run <code>npm run build-data</code> in <code>tools/</code>, or trigger the Refresh data workflow, to generate the data files.");
+  }
+}
+
+function wireCombo(list){
+  const input = $("#bossInput"), menu = $("#bossMenu");
+  let idx = -1, shown = [];
+  const render = () => {
+    const q = input.value.toLowerCase().trim();
+    shown = (q ? list.filter(b => b.name.toLowerCase().includes(q)) : list).slice(0, 80);
+    menu.innerHTML = shown.map((b,i) => `<div class="${i===idx?"on":""}" data-slug="${b.slug}">${b.name}</div>`).join("");
+    menu.classList.toggle("hidden", !shown.length);
+    menu.querySelectorAll("div").forEach(d => d.onmousedown = e => {
+      e.preventDefault();
+      selectBoss(list.find(b => b.slug === d.dataset.slug));
+      menu.classList.add("hidden");
+    });
+  };
+  input.onfocus = render; input.oninput = () => { idx=-1; render(); };
+  input.onblur = () => setTimeout(()=>menu.classList.add("hidden"), 120);
+  input.onkeydown = e => {
+    if (e.key === "ArrowDown"){ idx = Math.min(idx+1, shown.length-1); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp"){ idx = Math.max(idx-1, 0); render(); e.preventDefault(); }
+    else if (e.key === "Enter"){ const pick = shown[idx] || shown[0]; if (pick){ selectBoss(pick); menu.classList.add("hidden"); } }
+  };
+}
+
+let debTimer = null;
+const debounced = () => { clearTimeout(debTimer); debTimer = setTimeout(() => { readState(); recompute(); }, 220); };
+["kc","kph","cost"].forEach(id => $("#"+id).addEventListener("input", debounced));
+["optTax","optAlch"].forEach(id => $("#"+id).addEventListener("change", () => { readState(); recompute(); }));
+addEventListener("resize", () => { if (S.sim){ drawPaths(S.sim); drawHist(S.sim); drawRares(); } });
+
+(async function init(){
+  $("#status").textContent = "Loading data…";
+  const wanted = readHash();
+  let list;
+  try {
+    list = await loadIndex();
+  } catch (e) {
+    $("#status").textContent = "";
+    warn("No data files found (" + e.message + "). This site serves a pre-built snapshot of the wiki drop tables — "
+       + "run the <b>Refresh data</b> workflow in GitHub Actions, or <code>cd tools && npm install && npm run build-data</code> locally, then reload.");
+    return;
+  }
+  wireCombo(list);
+  S.seed = !!S.seedFlag;
+  if (S.seedFlag) warn("This is the bundled starter snapshot — one boss only. Run the <b>Refresh data</b> workflow in the Actions tab (or <code>cd tools && npm install && npm run build-data</code>) to pull every boss from the wiki.");
+  $("#status").innerHTML = list.length + " bosses · drop data updated " + ago(S.generated);
+  const pick = list.find(b => b.slug === wanted) || list.find(b => b.slug === "vardorvis") || list[0];
+  if (pick) await selectBoss(pick);
+  const stamp = $("#status").innerHTML;
+  $("#footnote").innerHTML =
+    "Rates come from the OSRS Wiki drop tables and are treated as independent per kill. That is exact for most bosses, but a few have staged mechanics a flat rate hides — "
+    + "the Ultor vestige needs three separate rolls, Chambers of Xeric and Tombs of Amascut scale with points and invocation level, and the blood quartz is rate-boosted before your first one. "
+    + "Prices are the midpoint of the real-time high and low from the wiki's price feed at build time, so they lag the live Grand Exchange by up to a few hours — every one is editable above.";
+  setTimeout(()=>{ if(!$("#status").innerHTML) $("#status").innerHTML = stamp; }, 50);
+})();
+</script>
+</body>
+</html>
